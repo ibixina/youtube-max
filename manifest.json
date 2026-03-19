@@ -24,7 +24,8 @@
             "css": [
                 "turbo.css"
             ],
-            "run_at": "document_start"
+            "run_at": "document_start",
+            "world": "MAIN"
         }
     ],
     "background": {

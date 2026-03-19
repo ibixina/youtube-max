@@ -1,0 +1,8 @@
+# System and browser generated files
+_metadata/
+.DS_Store
+Thumbs.db
+
+# Extension build/pack artifacts
+*.zip
+*.pem
