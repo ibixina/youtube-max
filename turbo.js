@@ -39,8 +39,8 @@
         dbs.forEach(db => {
           if (db.name !== "yt-player-local-media") indexedDB.deleteDatabase(db.name);
         });
-      }).catch(() => {});
-    } catch (e) {}
+      }).catch(() => { });
+    } catch (e) { }
   }
   purgeIndexedDB();
 
@@ -118,6 +118,40 @@
   function purgeDOM() {
     document.querySelectorAll(PURGE_SELECTORS).forEach(el => el.remove());
     document.querySelectorAll(PREVIEW_SELECTORS).forEach(el => el.remove());
+  }
+
+  // Intercept MediaSource to track SourceBuffers and trim old data
+  // (heap showed 766MB in 16k JSArrayBufferData — unbounded MSE buffers)
+  const MAX_RETAIN = 60; // keep 60s of buffer
+  const trackedSBRefs = new Set();
+
+  const origAddSB = MediaSource.prototype.addSourceBuffer;
+  MediaSource.prototype.addSourceBuffer = function (mime) {
+    const sb = origAddSB.call(this, mime);
+    trackedSBRefs.add(new WeakRef(sb));
+    return sb;
+  };
+
+  function trimSourceBuffers() {
+    const video = document.querySelector("video.html5-main-video");
+    if (!video || !video.currentTime) return;
+    const ct = video.currentTime;
+    const doTrim = () => {
+      for (const ref of trackedSBRefs) {
+        const sb = ref.deref();
+        if (!sb) { trackedSBRefs.delete(ref); continue; }
+        try {
+          if (sb.updating || !sb.buffered.length) continue;
+          const start = sb.buffered.start(0);
+          // Only trim data behind the playhead, never ahead
+          if (ct - start > MAX_RETAIN) {
+            sb.remove(start, ct - MAX_RETAIN);
+          }
+        } catch { trackedSBRefs.delete(ref); }
+      }
+    };
+    if (typeof requestIdleCallback === "function") requestIdleCallback(doTrim);
+    else setTimeout(doTrim, 200);
   }
 
   function destroyStaleRenderers() {
@@ -202,6 +236,7 @@
     purgeDOM();
     releaseHiddenData();
     destroyStaleRenderers();
+    trimSourceBuffers();
 
     // Release IntersectionObserver references for removed elements
     for (const img of observedImages) {

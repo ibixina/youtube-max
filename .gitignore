@@ -8,3 +8,5 @@ Thumbs.db
 *.pem
 
 Heap-*.heapsnapshot
+analyze_heap.js
+analyze_heap.py
