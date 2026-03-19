@@ -1,0 +1,169 @@
+/* YouTube Turbo — Nuclear CSS overrides
+   Injected at document_start, before YouTube's own styles */
+
+/* Kill ALL animations and transitions site-wide */
+*,
+*::before,
+*::after {
+  animation-duration: 0s !important;
+  animation-delay: 0s !important;
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
+  scroll-behavior: auto !important;
+}
+
+/* Force GPU compositing on the video player for smooth playback */
+#movie_player,
+#movie_player video,
+.html5-video-container {
+  will-change: transform;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* ===== Remove Bloat Elements ===== */
+
+/* Ads — comprehensive */
+#player-ads,
+#masthead-ad,
+#ad-text,
+#sparkles-container,
+.ytp-ad-module,
+.ytp-ad-overlay-container,
+.ytp-ad-progress-list,
+.ytp-ad-text,
+.ytp-ad-skip-button-container,
+.video-ads,
+ytd-ad-slot-renderer,
+ytd-banner-promo-renderer,
+ytd-statement-banner-renderer,
+ytd-in-feed-ad-layout-renderer,
+ytd-promoted-sparkles-web-renderer,
+ytd-display-ad-renderer,
+ytd-promoted-video-renderer,
+ytd-compact-promoted-video-renderer,
+ytd-action-companion-ad-renderer,
+ytd-engagement-panel-section-list-renderer[target-id="engagement-panel-ads"],
+tp-yt-paper-dialog:has(.ytd-mealbar-promo-renderer),
+ytd-mealbar-promo-renderer,
+ytd-popup-container,
+#offer-module,
+.ytd-rich-item-renderer ytd-ad-slot-renderer {
+  display: none !important;
+}
+
+/* Merch, donations, fundraisers */
+ytd-merch-shelf-renderer,
+ytd-donation-shelf-renderer,
+ytd-fundraiser-shelf-renderer {
+  display: none !important;
+}
+
+/* Shorts shelf */
+ytd-reel-shelf-renderer,
+ytd-rich-shelf-renderer[is-shorts],
+ytd-guide-entry-renderer a[title="Shorts"] {
+  display: none !important;
+}
+
+/* Notification popups, consent, promos */
+ytd-consent-bump-v2-lightbox,
+tp-yt-iron-overlay-backdrop,
+.yt-notification-action-renderer,
+tp-yt-paper-dialog,
+ytd-enforcement-message-view-model {
+  display: none !important;
+}
+
+/* Chat replay on VODs */
+ytd-live-chat-frame {
+  display: none !important;
+}
+
+/* Info cards overlaying video */
+.ytp-ce-element,
+.ytp-cards-teaser,
+.ytp-paid-content-overlay {
+  display: none !important;
+}
+
+/* Comments — hide by default (massive DOM) */
+ytd-comments#comments {
+  display: none !important;
+}
+
+/* Engagement panels (info, chapters sidebar) — load on demand */
+ytd-engagement-panel-section-list-renderer:not([target-id="engagement-panel-structured-description"]) {
+  display: none !important;
+}
+
+/* ===== Layout containment for rendering performance ===== */
+
+html,
+body {
+  overflow-anchor: none !important;
+}
+
+ytd-page-manager {
+  contain: layout style;
+}
+
+ytd-rich-grid-renderer,
+ytd-section-list-renderer,
+ytd-watch-next-secondary-results-renderer,
+ytd-item-section-renderer {
+  contain: layout style paint;
+}
+
+/* Aggressive content-visibility on all renderers */
+ytd-rich-item-renderer,
+ytd-compact-video-renderer,
+ytd-video-renderer,
+ytd-grid-video-renderer,
+ytd-playlist-video-renderer {
+  content-visibility: auto;
+  contain-intrinsic-size: 360px 280px;
+}
+
+ytd-thumbnail img,
+ytd-playlist-thumbnail img {
+  content-visibility: auto;
+  contain-intrinsic-size: 360px 202px;
+}
+
+/* Kill box shadows (expensive repaints) */
+#masthead-container,
+ytd-searchbox,
+#guide-wrapper {
+  box-shadow: none !important;
+}
+
+tp-yt-app-drawer {
+  --app-drawer-scrim-background: transparent !important;
+}
+
+/* Simplify scrollbar rendering */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.4);
+  border-radius: 4px;
+}
+
+/* Reduce thumbnail hover effects (layout thrash) */
+ytd-thumbnail:hover {
+  transform: none !important;
+}
+
+/* Disable video preview on hover (saves decode memory) */
+ytd-thumbnail #mouseover-overlay,
+ytd-thumbnail .ytd-moving-thumbnail-renderer,
+ytd-moving-thumbnail-renderer {
+  display: none !important;
+}

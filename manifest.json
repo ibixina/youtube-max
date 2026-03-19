@@ -1,0 +1,46 @@
+{
+    "manifest_version": 3,
+    "name": "YouTube Turbo",
+    "version": "1.0",
+    "description": "Strip YouTube down to bare metal. Maximum performance, zero lag.",
+    "permissions": [
+        "declarativeNetRequest",
+        "storage",
+        "alarms"
+    ],
+    "host_permissions": [
+        "*://*.youtube.com/*",
+        "*://*.googlevideo.com/*",
+        "*://*.ytimg.com/*"
+    ],
+    "content_scripts": [
+        {
+            "matches": [
+                "*://*.youtube.com/*"
+            ],
+            "js": [
+                "turbo.js"
+            ],
+            "css": [
+                "turbo.css"
+            ],
+            "run_at": "document_start"
+        }
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "declarative_net_request": {
+        "rule_resources": [
+            {
+                "id": "block_rules",
+                "enabled": true,
+                "path": "rules.json"
+            }
+        ]
+    },
+    "icons": {
+        "48": "icon.png",
+        "128": "icon.png"
+    }
+}
