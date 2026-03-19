@@ -33,12 +33,14 @@
 
   // --- 1.2 Purge IndexedDB ---
   function purgeIndexedDB() {
-    if (!indexedDB.databases) return;
-    indexedDB.databases().then(dbs => {
-      dbs.forEach(db => {
-        if (db.name !== "yt-player-local-media") indexedDB.deleteDatabase(db.name);
-      });
-    });
+    try {
+      if (!indexedDB.databases) return;
+      indexedDB.databases().then(dbs => {
+        dbs.forEach(db => {
+          if (db.name !== "yt-player-local-media") indexedDB.deleteDatabase(db.name);
+        });
+      }).catch(() => {});
+    } catch (e) {}
   }
   purgeIndexedDB();
 
@@ -62,8 +64,8 @@
 
   function isBlocked(url) {
     const s = String(url || "");
-    for (let i = 0; i < BLOCKED.length; i++) {
-      if (s.includes(BLOCKED[i])) return true;
+    for (const pattern of BLOCKED) {
+      if (s.includes(pattern)) return true;
     }
     return false;
   }
@@ -242,13 +244,6 @@
         purgeIndexedDB(); // Replaces the 5min interval
       }, 500);
     });
-
-    // Allow background playback
-    document.addEventListener("visibilitychange", (e) => {
-      if (document.hidden) {
-        e.stopImmediatePropagation();
-      }
-    }, true);
   }
 
   if (document.readyState === "loading") {

@@ -6,3 +6,5 @@ Thumbs.db
 # Extension build/pack artifacts
 *.zip
 *.pem
+
+Heap-*.heapsnapshot
