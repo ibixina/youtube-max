@@ -191,37 +191,50 @@
     ).forEach(el => el.remove());
   }
 
-  // Strip src from far-offscreen images
-  function trimImages() {
-    const vh = window.innerHeight;
-    document.querySelectorAll("ytd-thumbnail img[src]").forEach(img => {
-      const top = img.getBoundingClientRect().top;
-      if (top > vh * 2.5) {
-        img.dataset.turbosrc = img.src;
-        img.removeAttribute("src");
+  // --- Image management via IntersectionObserver (zero layout thrashing) ---
+  let imageIO;
+
+  function setupImageObserver() {
+    imageIO = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        const img = entry.target;
+        if (entry.isIntersecting) {
+          if (img.dataset.turbosrc) {
+            img.src = img.dataset.turbosrc;
+            delete img.dataset.turbosrc;
+          }
+        } else if (img.src && !img.dataset.turbosrc) {
+          img.dataset.turbosrc = img.src;
+          img.removeAttribute("src");
+        }
+      });
+    }, { rootMargin: "200% 0px" });
+
+    function observeNewImages() {
+      document.querySelectorAll("ytd-thumbnail img, ytd-playlist-thumbnail img").forEach(img => {
+        if (!img._tio) {
+          img._tio = true;
+          imageIO.observe(img);
+        }
+      });
+    }
+    observeNewImages();
+
+    // Re-observe when new thumbnails are added (SPA nav, infinite scroll)
+    new OrigMO(observeNewImages).observe(document.body, { childList: true, subtree: true });
+  }
+
+  // Block thumbnail hover preview at JS level
+  function blockHoverPreviews() {
+    document.addEventListener("mouseover", (e) => {
+      const thumb = e.target.closest("ytd-thumbnail, ytd-rich-grid-media");
+      if (thumb) {
+        thumb.removeAttribute("is-preview-loading");
+        thumb.removeAttribute("is-preview-playing");
       }
-    });
+    }, { capture: true, passive: true });
   }
 
-  function restoreNearbyImages() {
-    const vh = window.innerHeight;
-    document.querySelectorAll("img[data-turbosrc]").forEach(img => {
-      if (img.getBoundingClientRect().top < vh * 2) {
-        img.src = img.dataset.turbosrc;
-        delete img.dataset.turbosrc;
-      }
-    });
-  }
-
-  // Cap visible recommendations
-  function trimRecommendations() {
-    const items = document.querySelectorAll(
-      "ytd-compact-video-renderer,ytd-rich-item-renderer"
-    );
-    for (let i = 20; i < items.length; i++) items[i].remove();
-  }
-
-  // Null out data on hidden renderers to release JSON references
   function releaseHiddenData() {
     document.querySelectorAll("[hidden][data]").forEach(el => {
       if (typeof el.data === "object") el.data = null;
@@ -240,35 +253,36 @@
   }
 
   // ================================================================
-  // SECTION 3: Orchestration
+  // SECTION 3: Orchestration (mutation-driven, not blind polling)
   // ================================================================
 
+  let domDirty = true;
+
   function cleanup() {
+    if (!domDirty) return;
+    domDirty = false;
     purgeDOM();
-    trimImages();
-    trimRecommendations();
     releaseHiddenData();
     destroyStaleRenderers();
   }
 
   function onReady() {
     purgeDOM();
-    trimImages();
     capVideoQuality();
     disableAutoplay();
+    blockHoverPreviews();
+    setupImageObserver();
 
-    // Periodic cleanup — every 10s
-    setInterval(cleanup, 10000);
+    // Set dirty flag on DOM mutations instead of polling blindly
+    new OrigMO(() => { domDirty = true; }).observe(
+      document.body, { childList: true, subtree: true }
+    );
+
+    // Cheap flag check every 5s — only does work if DOM actually changed
+    setInterval(cleanup, 5000);
 
     // Re-purge IndexedDB every 5 minutes
     setInterval(purgeIndexedDB, 300000);
-
-    // Scroll-based image restore
-    let scrollTimer;
-    window.addEventListener("scroll", () => {
-      clearTimeout(scrollTimer);
-      scrollTimer = setTimeout(restoreNearbyImages, 200);
-    }, { passive: true });
 
     // SPA navigation handler
     document.addEventListener("yt-navigate-finish", () => {
@@ -280,7 +294,6 @@
       setTimeout(() => {
         destroyStaleRenderers();
         purgeDOM();
-        trimImages();
         capVideoQuality();
         disableAutoplay();
       }, 500);

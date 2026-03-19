@@ -161,9 +161,17 @@ ytd-thumbnail:hover {
   transform: none !important;
 }
 
-/* Disable video preview on hover (saves decode memory) */
+/* Disable video preview on hover (saves decode memory + CPU) */
 ytd-thumbnail #mouseover-overlay,
 ytd-thumbnail .ytd-moving-thumbnail-renderer,
-ytd-moving-thumbnail-renderer {
+ytd-moving-thumbnail-renderer,
+ytd-video-preview,
+#video-preview,
+#mouseover-overlay,
+ytd-thumbnail[is-preview-loading],
+ytd-thumbnail #inline-playback-container,
+ytd-rich-item-renderer ytd-video-preview,
+ytd-thumbnail .ytd-thumbnail #hover-overlays {
   display: none !important;
+  pointer-events: none !important;
 }
