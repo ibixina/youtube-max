@@ -6,6 +6,9 @@
 // ============================================================
 
 (() => {
+  if (window.__turbo_init) return;
+  window.__turbo_init = true;
+
   let navCount = 0;
   const MAX_NAVS_BEFORE_RELOAD = 15;
 
@@ -129,6 +132,7 @@
 
   // --- Image management via IntersectionObserver (zero layout thrashing) ---
   let imageIO;
+  const observedImages = new Set();
 
   function setupImageObserver() {
     imageIO = new IntersectionObserver((entries) => {
@@ -145,18 +149,17 @@
         }
       });
     }, { rootMargin: "200% 0px" });
+  }
 
-    function observeNewImages() {
-      document.querySelectorAll("ytd-thumbnail img, ytd-playlist-thumbnail img").forEach(img => {
-        if (!img._tio) {
-          img._tio = true;
-          imageIO.observe(img);
-        }
-      });
-    }
-    observeNewImages();
-
-    new MutationObserver(observeNewImages).observe(document.body, { childList: true, subtree: true });
+  function observeNewImages() {
+    if (!imageIO) return;
+    document.querySelectorAll("ytd-thumbnail img, ytd-playlist-thumbnail img").forEach(img => {
+      if (!img._tio) {
+        img._tio = true;
+        observedImages.add(img);
+        imageIO.observe(img);
+      }
+    });
   }
 
   function releaseHiddenData() {
@@ -180,7 +183,16 @@
   // SECTION 3: Orchestration (mutation-driven, not blind polling)
   // ================================================================
 
-  let domDirty = true;
+  let domDirty = false;
+  let mutTimer = null;
+  const mainObserver = new MutationObserver(() => {
+    domDirty = true;
+    clearTimeout(mutTimer);
+    mutTimer = setTimeout(() => {
+      observeNewImages();
+      cleanup();
+    }, 2000);
+  });
 
   function cleanup() {
     if (!domDirty) return;
@@ -188,6 +200,14 @@
     purgeDOM();
     releaseHiddenData();
     destroyStaleRenderers();
+
+    // Release IntersectionObserver references for removed elements
+    for (const img of observedImages) {
+      if (!document.body.contains(img)) {
+        imageIO.unobserve(img);
+        observedImages.delete(img);
+      }
+    }
   }
 
   function onReady() {
@@ -195,18 +215,22 @@
     capVideoQuality();
     disableAutoplay();
     setupImageObserver();
+    observeNewImages();
 
-    new MutationObserver(() => { domDirty = true; }).observe(
-      document.body, { childList: true, subtree: true }
-    );
-
-    setInterval(cleanup, 5000);
-    setInterval(purgeIndexedDB, 300000);
+    mainObserver.observe(document.body, { childList: true, subtree: true });
 
     // SPA navigation handler
     document.addEventListener("yt-navigate-finish", () => {
       navCount++;
+
+      // Flush massive SPA transition mutations
+      mainObserver.disconnect();
+      mainObserver.observe(document.body, { childList: true, subtree: true });
+
       if (navCount >= MAX_NAVS_BEFORE_RELOAD) {
+        // Clear observers before reload to free memory faster
+        mainObserver.disconnect();
+        if (imageIO) imageIO.disconnect();
         window.location.reload();
         return;
       }
@@ -215,6 +239,7 @@
         purgeDOM();
         capVideoQuality();
         disableAutoplay();
+        purgeIndexedDB(); // Replaces the 5min interval
       }, 500);
     });
 
