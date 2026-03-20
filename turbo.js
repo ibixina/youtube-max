@@ -10,11 +10,30 @@
   window.__turbo_init = true;
 
   let navCount = 0;
-  const MAX_NAVS_BEFORE_RELOAD = 15;
+  // Deep closure leaks in YouTube cannot be fully fixed without a hard VM reset. 
+  // Reloading every 4 clicks completely resets system/Context and ArrayBuffers.
+  const MAX_NAVS_BEFORE_RELOAD = 4;
 
   // ================================================================
   // SECTION 1: Early interception (before YouTube code runs)
   // ================================================================
+
+  // --- 1.0 Prevent Blob URI Leaks (MediaSource) ---
+  // If YouTube leaks the Blob URI string in a closure, the browser NEVER frees the MediaSource memory!
+  const origCreateObjectURL = URL.createObjectURL;
+  const activeMediaSourceUrls = [];
+  URL.createObjectURL = function (obj) {
+    const url = origCreateObjectURL.apply(this, arguments);
+    if (obj instanceof MediaSource) {
+      activeMediaSourceUrls.push(url);
+      if (activeMediaSourceUrls.length > 2) {
+        // Keep 2 just in case it's doing a seamless transition, but revoke anything older!
+        const oldUrl = activeMediaSourceUrls.shift();
+        try { URL.revokeObjectURL(oldUrl); } catch (e) { }
+      }
+    }
+    return url;
+  };
 
   // --- 1.1 Kill Service Worker ---
   if (navigator.serviceWorker) {
@@ -122,11 +141,27 @@
 
   // Intercept MediaSource to track SourceBuffers and trim old data
   // (heap showed 766MB in 16k JSArrayBufferData — unbounded MSE buffers)
-  const MAX_RETAIN = 60; // keep 60s of buffer
+  const MAX_RETAIN = 30; // aggressively trim to 30s buffer to fix ArrayBuffer leaks
   const trackedSBRefs = new Set();
+  let activeMediaSource = null;
 
   const origAddSB = MediaSource.prototype.addSourceBuffer;
   MediaSource.prototype.addSourceBuffer = function (mime) {
+    if (activeMediaSource !== this) {
+      // User clicked a new video -> Purge massive ArrayBuffers from previously tracked MediaSources!
+      for (const ref of trackedSBRefs) {
+        const oldSb = ref.deref();
+        if (oldSb) {
+          try {
+            if (oldSb.updating) oldSb.abort();
+            oldSb.remove(0, Infinity);
+          } catch (e) { }
+        }
+      }
+      trackedSBRefs.clear();
+      activeMediaSource = this;
+    }
+
     const sb = origAddSB.call(this, mime);
     trackedSBRefs.add(new WeakRef(sb));
     return sb;
@@ -155,10 +190,18 @@
   }
 
   function destroyStaleRenderers() {
+    // Target hidden SPA pages holding onto massive DOM trees and closures
     document.querySelectorAll(
-      "ytd-watch-flexy[hidden],ytd-browse[hidden]"
+      "ytd-watch-flexy[hidden],ytd-browse[hidden],ytd-search[hidden],ytd-playlist[hidden]"
     ).forEach(el => {
-      if (el.data) el.data = null;
+      try {
+        if (el.data) el.data = null;
+        if (el.__data) el.__data = null;
+        if (el.items) el.items = null;
+        if (el.player) el.player = null;
+      } catch { }
+      // Nuke child nodes so ytd- elements can be GC'd (CSP-safe, no innerHTML)
+      while (el.firstChild) el.firstChild.remove();
       el.remove();
     });
     document.querySelectorAll(
@@ -199,8 +242,11 @@
   }
 
   function releaseHiddenData() {
-    document.querySelectorAll("[hidden][data]").forEach(el => {
-      if (typeof el.data === "object") el.data = null;
+    // General sweep for detached node data properties
+    document.querySelectorAll("[hidden]").forEach(el => {
+      if (el.data && typeof el.data === "object") el.data = null;
+      if (el.__data) el.__data = null;
+      if (el.items) el.items = null;
     });
   }
 
@@ -253,6 +299,10 @@
     disableAutoplay();
     setupImageObserver();
     observeNewImages();
+
+    // Ensure memory is trimmed reliably even when DOM is totally static
+    setInterval(trimSourceBuffers, 10000);
+    setInterval(destroyStaleRenderers, 30000);
 
     mainObserver.observe(document.body, { childList: true, subtree: true });
 
