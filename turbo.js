@@ -9,10 +9,7 @@
   if (window.__turbo_init) return;
   window.__turbo_init = true;
 
-  let navCount = 0;
-  // Deep closure leaks in YouTube cannot be fully fixed without a hard VM reset. 
-  // Reloading every 4 clicks completely resets system/Context and ArrayBuffers.
-  const MAX_NAVS_BEFORE_RELOAD = 4;
+
 
   // ================================================================
   // SECTION 1: Early interception (before YouTube code runs)
@@ -63,14 +60,40 @@
   }
   purgeIndexedDB();
 
-  // --- 1.3 Limit history.pushState ---
-  let historyCount = 0;
+  // --- 1.3 Force hard navigation (flush all SPA garbage on every navigate) ---
+  let navigating = false;
+
+  // Primary: intercept link clicks in capture phase (before YouTube's Polymer handlers)
+  document.addEventListener("click", (e) => {
+    if (navigating) return;
+    const anchor = e.target.closest("a[href]");
+    if (!anchor) return;
+    try {
+      const url = new URL(anchor.href);
+      if (!url.hostname.includes("youtube.com")) return;
+      if (url.pathname === location.pathname && url.search === location.search) return;
+      navigating = true;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      window.location.href = anchor.href;
+    } catch { }
+  }, true);
+
+  // Fallback: catch any programmatic SPA navigations via pushState
   const origPushState = history.pushState.bind(history);
   history.pushState = function (state, title, url) {
-    historyCount++;
-    if (historyCount > 10) return history.replaceState(state, title, url);
+    if (url && !navigating) {
+      const next = new URL(url, location.href);
+      if (next.pathname !== location.pathname || next.search !== location.search) {
+        navigating = true;
+        window.location.href = next.href;
+        return;
+      }
+    }
     return origPushState(state, title, url);
   };
+
+  window.addEventListener("popstate", () => window.location.reload());
 
   // --- 1.4 Block telemetry ---
   const BLOCKED = [
@@ -128,6 +151,8 @@
     "ytd-popup-container,ytd-consent-bump-v2-lightbox," +
     "tp-yt-iron-overlay-backdrop,ytd-merch-shelf-renderer," +
     "ytd-donation-shelf-renderer,ytd-reel-shelf-renderer," +
+    "ytd-rich-shelf-renderer[is-shorts]," +
+    "yt-video-metadata-carousel-view-model," +
     "#offer-module,.ytp-ce-element,.ytp-cards-teaser," +
     "ytd-live-chat-frame";
 
@@ -137,6 +162,21 @@
   function purgeDOM() {
     document.querySelectorAll(PURGE_SELECTORS).forEach(el => el.remove());
     document.querySelectorAll(PREVIEW_SELECTORS).forEach(el => el.remove());
+
+    // Kill any remaining Shorts and Mixes by targeting their links and deleting their containers
+    document.querySelectorAll("a[href^='/shorts/'], a[href*='start_radio=1']").forEach(a => {
+      const parentNode = a.closest("ytd-rich-item-renderer, ytd-video-renderer, ytd-grid-video-renderer, ytd-compact-video-renderer");
+      if (parentNode) parentNode.remove();
+    });
+
+    // Wipe engagement panels (Chapters, Transcript) unless they are the main description
+    document.querySelectorAll("ytd-engagement-panel-section-list-renderer:not([target-id='engagement-panel-structured-description'])").forEach(el => {
+      try {
+        if (el.data) el.data = null;
+        while (el.firstChild) el.firstChild.remove();
+      } catch { }
+      el.remove();
+    });
   }
 
   // Intercept MediaSource to track SourceBuffers and trim old data
@@ -147,21 +187,6 @@
 
   const origAddSB = MediaSource.prototype.addSourceBuffer;
   MediaSource.prototype.addSourceBuffer = function (mime) {
-    if (activeMediaSource !== this) {
-      // User clicked a new video -> Purge massive ArrayBuffers from previously tracked MediaSources!
-      for (const ref of trackedSBRefs) {
-        const oldSb = ref.deref();
-        if (oldSb) {
-          try {
-            if (oldSb.updating) oldSb.abort();
-            oldSb.remove(0, Infinity);
-          } catch (e) { }
-        }
-      }
-      trackedSBRefs.clear();
-      activeMediaSource = this;
-    }
-
     const sb = origAddSB.call(this, mime);
     trackedSBRefs.add(new WeakRef(sb));
     return sb;
@@ -189,25 +214,6 @@
     else setTimeout(doTrim, 200);
   }
 
-  function destroyStaleRenderers() {
-    // Target hidden SPA pages holding onto massive DOM trees and closures
-    document.querySelectorAll(
-      "ytd-watch-flexy[hidden],ytd-browse[hidden],ytd-search[hidden],ytd-playlist[hidden]"
-    ).forEach(el => {
-      try {
-        if (el.data) el.data = null;
-        if (el.__data) el.__data = null;
-        if (el.items) el.items = null;
-        if (el.player) el.player = null;
-      } catch { }
-      // Nuke child nodes so ytd- elements can be GC'd (CSP-safe, no innerHTML)
-      while (el.firstChild) el.firstChild.remove();
-      el.remove();
-    });
-    document.querySelectorAll(
-      "tp-yt-paper-tooltip,tp-yt-paper-dialog"
-    ).forEach(el => el.remove());
-  }
 
   // --- Image management via IntersectionObserver (zero layout thrashing) ---
   let imageIO;
@@ -258,7 +264,14 @@
 
   function disableAutoplay() {
     const btn = document.querySelector(".ytp-autonav-toggle-button");
-    if (btn?.getAttribute("aria-checked") === "true") btn.click();
+    if (btn && btn.getAttribute("aria-checked") === "true") {
+      btn.click();
+    }
+    // Also try to hit the manager directly if accessible
+    const manager = document.querySelector("yt-navigation-manager");
+    if (manager && manager.setAutonavState) {
+      try { manager.setAutonavState("AUTONAV_STATE_OFF"); } catch { }
+    }
   }
 
   // ================================================================
@@ -281,7 +294,6 @@
     domDirty = false;
     purgeDOM();
     releaseHiddenData();
-    destroyStaleRenderers();
     trimSourceBuffers();
 
     // Release IntersectionObserver references for removed elements
@@ -302,33 +314,10 @@
 
     // Ensure memory is trimmed reliably even when DOM is totally static
     setInterval(trimSourceBuffers, 10000);
-    setInterval(destroyStaleRenderers, 30000);
 
     mainObserver.observe(document.body, { childList: true, subtree: true });
 
-    // SPA navigation handler
-    document.addEventListener("yt-navigate-finish", () => {
-      navCount++;
 
-      // Flush massive SPA transition mutations
-      mainObserver.disconnect();
-      mainObserver.observe(document.body, { childList: true, subtree: true });
-
-      if (navCount >= MAX_NAVS_BEFORE_RELOAD) {
-        // Clear observers before reload to free memory faster
-        mainObserver.disconnect();
-        if (imageIO) imageIO.disconnect();
-        window.location.reload();
-        return;
-      }
-      setTimeout(() => {
-        destroyStaleRenderers();
-        purgeDOM();
-        capVideoQuality();
-        disableAutoplay();
-        purgeIndexedDB(); // Replaces the 5min interval
-      }, 500);
-    });
   }
 
   if (document.readyState === "loading") {

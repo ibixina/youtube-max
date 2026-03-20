@@ -59,10 +59,17 @@ ytd-fundraiser-shelf-renderer {
   display: none !important;
 }
 
-/* Shorts shelf */
+/* Shorts shelf and items */
 ytd-reel-shelf-renderer,
 ytd-rich-shelf-renderer[is-shorts],
-ytd-guide-entry-renderer a[title="Shorts"] {
+ytd-guide-entry-renderer a[title="Shorts"],
+ytd-mini-guide-entry-renderer[aria-label="Shorts"],
+a[href^="/shorts/"] {
+  display: none !important;
+}
+
+/* Mix playlists */
+a[href*="start_radio=1"] {
   display: none !important;
 }
 
@@ -75,8 +82,9 @@ ytd-enforcement-message-view-model {
   display: none !important;
 }
 
-/* Chat replay on VODs */
-ytd-live-chat-frame {
+/* Chat replay on VODs / Live Chat promos */
+ytd-live-chat-frame,
+yt-video-metadata-carousel-view-model {
   display: none !important;
 }
 
