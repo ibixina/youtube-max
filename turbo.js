@@ -97,7 +97,7 @@
 
   // --- 1.4 Block telemetry ---
   const BLOCKED = [
-    "/api/stats/atr", "/api/stats/playback",
+    "/api/stats/atr",
     "/youtubei/v1/log_event", "/youtubei/v1/att/get",
     "/generate_204", "play.google.com", "doubleclick.net",
     "googlesyndication.com", "googleadservices.com", "google-analytics.com",
@@ -153,7 +153,6 @@
     "tp-yt-iron-overlay-backdrop,ytd-merch-shelf-renderer," +
     "ytd-donation-shelf-renderer,ytd-reel-shelf-renderer," +
     "ytd-rich-shelf-renderer[is-shorts]," +
-    "yt-video-metadata-carousel-view-model," +
     "#offer-module,.ytp-ce-element,.ytp-cards-teaser," +
     "ytd-live-chat-frame";
 
@@ -170,21 +169,16 @@
       if (parentNode) parentNode.remove();
     });
 
-    // Wipe engagement panels (Chapters, Transcript) unless they are the main description
-    document.querySelectorAll("ytd-engagement-panel-section-list-renderer:not([target-id='engagement-panel-structured-description'])").forEach(el => {
-      try {
-        if (el.data) el.data = null;
-        while (el.firstChild) el.firstChild.remove();
-      } catch { }
-      el.remove();
+    // Instead of destroying engagement panels and Metadata Carousel (which crashes YouTube's chapter tracking), just hide them
+    document.querySelectorAll("ytd-engagement-panel-section-list-renderer:not([target-id='engagement-panel-structured-description']), yt-video-metadata-carousel-view-model").forEach(el => {
+      if (el.style.display !== "none") el.style.display = "none";
     });
   }
 
   // Intercept MediaSource to track SourceBuffers and trim old data
   // (heap showed 766MB in 16k JSArrayBufferData — unbounded MSE buffers)
-  const MAX_RETAIN = 30; // aggressively trim to 30s buffer to fix ArrayBuffer leaks
+  const MAX_RETAIN = 120; // seconds behind playhead to keep buffered
   const trackedSBRefs = new Set();
-  let activeMediaSource = null;
 
   const origAddSB = MediaSource.prototype.addSourceBuffer;
   MediaSource.prototype.addSourceBuffer = function (mime) {
@@ -196,6 +190,8 @@
   function trimSourceBuffers() {
     const video = document.querySelector("video.html5-main-video");
     if (!video || !video.currentTime) return;
+    // Don't trim while paused or seeking — the player may be rebuffering
+    if (video.paused || video.seeking) return;
     const ct = video.currentTime;
     const doTrim = () => {
       for (const ref of trackedSBRefs) {
@@ -204,10 +200,9 @@
         try {
           if (sb.updating || !sb.buffered.length) continue;
           const start = sb.buffered.start(0);
-          // Only trim data behind the playhead, never ahead
-          if (ct - start > MAX_RETAIN) {
-            sb.remove(start, ct - MAX_RETAIN);
-          }
+          const trimEnd = ct - MAX_RETAIN;
+          if (trimEnd - start < 10) continue; // not worth trimming tiny amounts
+          sb.remove(start, trimEnd);
         } catch { trackedSBRefs.delete(ref); }
       }
     };

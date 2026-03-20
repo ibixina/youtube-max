@@ -151,5 +151,40 @@
             "totalTransfer_KB": 2978.2,
             "elementsWithDataProps": 500
         }
+    },
+    "with_extension_v3": {
+        "homepage": {
+            "phase": "extension_v3_homepage",
+            "timestamp": "2026-03-20T20:29:15.000Z",
+            "url": "https://www.youtube.com/",
+            "jsHeapUsed_MB": 49.5,
+            "jsHeapTotal_MB": 100.4,
+            "jsHeapLimit_MB": 2144,
+            "domNodes": 2181,
+            "domDepth": 25,
+            "first-paint_ms": 2296.0,
+            "first-contentful-paint_ms": 2296.0,
+            "domContentLoaded_ms": 4051.7,
+            "loadEvent_ms": 6104.8,
+            "totalRequests": 135,
+            "totalTransfer_KB": 2900.0,
+            "elementsWithDataProps": 180
+        },
+        "after_video_click": {
+            "phase": "extension_v3_after_video_click",
+            "timestamp": "2026-03-20T20:29:45.000Z",
+            "jsHeapUsed_MB": 95.6,
+            "jsHeapTotal_MB": 240.7,
+            "jsHeapLimit_MB": 2144,
+            "domNodes": 13148,
+            "domDepth": 35,
+            "first-paint_ms": 1848.0,
+            "first-contentful-paint_ms": 1848.0,
+            "domContentLoaded_ms": 3835.8,
+            "loadEvent_ms": 4134.3,
+            "totalRequests": 19,
+            "totalTransfer_KB": 1781.6,
+            "elementsWithDataProps": 2655
+        }
     }
 }
