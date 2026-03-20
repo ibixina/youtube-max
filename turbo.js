@@ -97,11 +97,12 @@
 
   // --- 1.4 Block telemetry ---
   const BLOCKED = [
-    "/api/stats/", "/youtubei/v1/log_event", "/youtubei/v1/att/get",
+    "/api/stats/atr", "/api/stats/playback",
+    "/youtubei/v1/log_event", "/youtubei/v1/att/get",
     "/generate_204", "play.google.com", "doubleclick.net",
     "googlesyndication.com", "googleadservices.com", "google-analytics.com",
     "googletagmanager.com", "jnn-pa.googleapis.com", "adservice.google",
-    "/ptracking", "/api/stats/watchtime", "/api/stats/atr",
+    "/ptracking",
   ];
 
   function isBlocked(url) {
