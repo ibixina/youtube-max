@@ -1,6 +1,6 @@
 # YouTube Turbo
 
-Strip YouTube down to bare metal for maximum performance and zero lag. This extension kills bloat, forces hard navigations to eliminate native SPA memory leaks, and drastically reduces CPU and memory usage.
+Strip YouTube down to bare metal for maximum performance. This extension kills bloat, forces hard navigations to eliminate native SPA memory leaks, and drastically reduces CPU and memory usage.
 
 ## Features
 - **Forces hard navigations:** Resets the JS context and purges ArrayBuffers/closures on every click instead of using YouTube's leaky SPA router.
